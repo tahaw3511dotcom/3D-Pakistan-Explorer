@@ -1,222 +1,287 @@
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 
-const PAKISTAN_CENTER = [69.3451, 30.3753];
-const PAKISTAN_ZOOM = 4.8;
+const Map3D = ({ cities, onCityClick, flyTo }) => {
+  const mapContainer = useRef(null);
+  const map = useRef(null);
+  const [mapStyle, setMapStyle] = useState(() => {
+    return localStorage.getItem('mapStyle') || 'street';
+  });
 
-// Population values for tower heights (in millions)
-const POP_MAP = {
-  Karachi: 16, Lahore: 13, Faisalabad: 3.6, Rawalpindi: 2.2,
-  Gujranwala: 2.3, Peshawar: 2.1, Multan: 2, Hyderabad: 1.7,
-  Islamabad: 1.2, Quetta: 1.1, Bahawalpur: 0.8, Sialkot: 0.9,
-  Sargodha: 0.8, Abbottabad: 0.9, Sheikhupura: 0.8,
-};
+  const mapStyles = {
+    street: {
+      name: 'Street View',
+      url: 'https://tiles.stadiamaps.com/styles/alidade_smooth.json',
+      iconChar: '🗺️'
+    },
+    satellite: {
+      name: 'Satellite View',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      iconChar: '🛰️'
+    },
+    dark: {
+      name: 'Dark View',
+      url: 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json',
+      iconChar: '🌙'
+    },
+    outdoors: {
+      name: 'Outdoors View',
+      url: 'https://tiles.stadiamaps.com/styles/outdoors.json',
+      iconChar: '🏔️'
+    },
+    light: {
+      name: 'Light View',
+      url: 'https://tiles.stadiamaps.com/styles/osm_bright.json',
+      iconChar: '☀️'
+    }
+  };
 
-const TIER_COLORS = {
-  capital: [245, 158, 11],
-  major:   [56, 189, 248],
-  minor:   [134, 239, 172],
-};
+  const addMarkers = () => {
+    if (!map.current) return;
+    
+    try {
+      if (map.current.getLayer('cities-layer')) {
+        map.current.removeLayer('cities-layer');
+      }
+      if (map.current.getLayer('cities-glow')) {
+        map.current.removeLayer('cities-glow');
+      }
+      if (map.current.getSource('cities-source')) {
+        map.current.removeSource('cities-source');
+      }
+    } catch (err) {
+      console.log('Cleanup error:', err);
+    }
 
-export default function Map3D({ cities, onCityClick, flyTo }) {
-  const containerRef = useRef(null);
-  const mapRef       = useRef(null);
-  const markersRef   = useRef([]);
-  const [coords, setCoords] = useState(null);
+    const geojson = {
+      type: 'FeatureCollection',
+      features: cities.map(city => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [city.lon, city.lat]
+        },
+        properties: {
+          name: city.name,
+          province: city.province,
+          pop: city.pop,
+          tier: city.tier,
+          color: city.tier === 'capital' ? '#f59e0b' : city.tier === 'major' ? '#00d4aa' : '#4ade80'
+        }
+      }))
+    };
 
-  useEffect(() => {
-    if (mapRef.current || !containerRef.current) return;
-
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      // Free dark style from Stadia Maps (no key needed)
-      style: 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json',
-      center: PAKISTAN_CENTER,
-      zoom: PAKISTAN_ZOOM,
-      pitch: 45,
-      bearing: -10,
-      antialias: true,
+    map.current.addSource('cities-source', {
+      type: 'geojson',
+      data: geojson
     });
 
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-    map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
-
-    map.on('load', () => {
-      // Add 3D terrain using free Maptiler terrain
-      map.addSource('terrain', {
-        type: 'raster-dem',
-        url: 'https://demotiles.maplibre.org/terrain-tiles/tiles.json',
-        tileSize: 256,
-      });
-      map.setTerrain({ source: 'terrain', exaggeration: 2.5 });
-
-      // Sky layer for atmosphere
-      map.setSky({
-        'sky-color': '#0a1929',
-        'sky-horizon-blend': 0.5,
-        'horizon-color': '#1e3a5f',
-        'horizon-fog-blend': 0.5,
-        'fog-color': '#0d1b2a',
-        'fog-ground-blend': 0.5,
-      });
-
-      // Add city tower layer as GeoJSON
-      const geojson = {
-        type: 'FeatureCollection',
-        features: cities.map(city => ({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [city.lon, city.lat] },
-          properties: {
-            name: city.name,
-            tier: city.tier,
-            pop: POP_MAP[city.name] || 0.1,
-            province: city.province,
-            color: JSON.stringify(TIER_COLORS[city.tier] || TIER_COLORS.minor),
-          },
-        })),
-      };
-
-      map.addSource('cities', { type: 'geojson', data: geojson });
-
-      // Glowing base circles
-      map.addLayer({
-        id: 'city-glow',
-        type: 'circle',
-        source: 'cities',
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'],
-            4, ['case', ['==', ['get', 'tier'], 'capital'], 14,
-                         ['==', ['get', 'tier'], 'major'], 9, 6],
-            10, ['case', ['==', ['get', 'tier'], 'capital'], 28,
-                          ['==', ['get', 'tier'], 'major'], 18, 12],
-          ],
-          'circle-color': ['case',
-            ['==', ['get', 'tier'], 'capital'], '#f59e0b',
-            ['==', ['get', 'tier'], 'major'],   '#38bdf8',
-            '#86efac',
-          ],
-          'circle-opacity': 0.25,
-          'circle-blur': 1,
-        },
-      });
-
-      // Solid marker dots
-      map.addLayer({
-        id: 'city-dots',
-        type: 'circle',
-        source: 'cities',
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'],
-            4, ['case', ['==', ['get', 'tier'], 'capital'], 7,
-                         ['==', ['get', 'tier'], 'major'], 5, 3],
-            10, ['case', ['==', ['get', 'tier'], 'capital'], 14,
-                          ['==', ['get', 'tier'], 'major'], 10, 7],
-          ],
-          'circle-color': ['case',
-            ['==', ['get', 'tier'], 'capital'], '#f59e0b',
-            ['==', ['get', 'tier'], 'major'],   '#38bdf8',
-            '#86efac',
-          ],
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': 'rgba(255,255,255,0.7)',
-        },
-      });
-
-      // City name labels
-      map.addLayer({
-        id: 'city-labels',
-        type: 'symbol',
-        source: 'cities',
-        minzoom: 5,
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-font': ['Open Sans Bold'],
-          'text-size': ['interpolate', ['linear'], ['zoom'],
-            5, ['case', ['==', ['get', 'tier'], 'capital'], 13,
-                         ['==', ['get', 'tier'], 'major'], 11, 9],
-            10, 14,
-          ],
-          'text-offset': [0, 1.2],
-          'text-anchor': 'top',
-          'text-allow-overlap': false,
-        },
-        paint: {
-          'text-color': ['case',
-            ['==', ['get', 'tier'], 'capital'], '#fbbf24',
-            ['==', ['get', 'tier'], 'major'],   '#7dd3fc',
-            '#bbf7d0',
-          ],
-          'text-halo-color': 'rgba(0,0,0,0.8)',
-          'text-halo-width': 1.5,
-        },
-      });
-
-      // Click handler
-      map.on('click', 'city-dots', (e) => {
-        const props = e.features[0].properties;
-        const city = cities.find(c => c.name === props.name);
-        if (city) onCityClick(city);
-      });
-
-      map.on('mouseenter', 'city-dots', () => {
-        map.getCanvas().style.cursor = 'pointer';
-      });
-      map.on('mouseleave', 'city-dots', () => {
-        map.getCanvas().style.cursor = '';
-      });
+    map.current.addLayer({
+      id: 'cities-layer',
+      type: 'circle',
+      source: 'cities-source',
+      paint: {
+        'circle-radius': [
+          'match',
+          ['get', 'tier'],
+          'capital', 10,
+          'major', 8,
+          'minor', 6,
+          6
+        ],
+        'circle-color': ['get', 'color'],
+        'circle-stroke-width': 2.5,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 0.95,
+        'circle-blur': 0.08
+      }
     });
 
-    map.on('mousemove', (e) => {
-      setCoords({ lat: e.lngLat.lat.toFixed(4), lon: e.lngLat.lng.toFixed(4) });
+    map.current.addLayer({
+      id: 'cities-glow',
+      type: 'circle',
+      source: 'cities-source',
+      paint: {
+        'circle-radius': [
+          'match',
+          ['get', 'tier'],
+          'capital', 16,
+          'major', 12,
+          'minor', 9,
+          9
+        ],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.25,
+        'circle-blur': 0.5
+      }
     });
-    map.on('mouseout', () => setCoords(null));
 
-    mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; };
-  }, []);
-
-  // Fly to selected city
-  useEffect(() => {
-    if (!flyTo || !mapRef.current) return;
-    mapRef.current.flyTo({
-      center: [flyTo.lon, flyTo.lat],
-      zoom: flyTo.tier === 'capital' ? 11 : flyTo.tier === 'major' ? 10 : 9,
-      pitch: 55,
-      bearing: Math.random() * 60 - 30,
-      duration: 2000,
-      essential: true,
+    map.current.on('click', 'cities-layer', (e) => {
+      const cityName = e.features[0].properties.name;
+      const city = cities.find(c => c.name === cityName);
+      if (city) onCityClick(city);
     });
-  }, [flyTo]);
 
-  const resetView = () => {
-    if (!mapRef.current) return;
-    mapRef.current.flyTo({
-      center: PAKISTAN_CENTER, zoom: PAKISTAN_ZOOM,
-      pitch: 45, bearing: -10, duration: 1800,
+    map.current.on('mouseenter', 'cities-layer', () => {
+      map.current.getCanvas().style.cursor = 'pointer';
+    });
+    map.current.on('mouseleave', 'cities-layer', () => {
+      map.current.getCanvas().style.cursor = '';
     });
   };
 
+  useEffect(() => {
+    if (!mapContainer.current || map.current) return;
+
+    const styleUrl = mapStyles[mapStyle].url;
+    
+    map.current = new maplibregl.Map({
+      container: mapContainer.current,
+      style: styleUrl,
+      center: [71.5249, 30.1575],
+      zoom: 5.5,
+      attributionControl: false,
+      trackResize: false,
+      renderWorldCopies: false,
+      fadeDuration: 0
+    });
+
+    map.current.addControl(new maplibregl.NavigationControl({ 
+      showCompass: true,
+      showZoom: true 
+    }), 'top-right');
+
+    map.current.on('load', () => {
+      addMarkers();
+    });
+
+    return () => {
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!map.current) return;
+    
+    localStorage.setItem('mapStyle', mapStyle);
+    
+    const styleUrl = mapStyles[mapStyle].url;
+    
+    try {
+      if (map.current.getLayer('cities-layer')) {
+        map.current.removeLayer('cities-layer');
+      }
+      if (map.current.getLayer('cities-glow')) {
+        map.current.removeLayer('cities-glow');
+      }
+      if (map.current.getSource('cities-source')) {
+        map.current.removeSource('cities-source');
+      }
+    } catch (err) {
+      console.log('Cleanup before style change:', err);
+    }
+    
+    map.current.setStyle(styleUrl);
+    map.current.once('styledata', () => {
+      addMarkers();
+    });
+  }, [mapStyle]);
+
+  useEffect(() => {
+    if (!map.current || !flyTo) return;
+    
+    map.current.flyTo({
+      center: [flyTo.lon, flyTo.lat],
+      zoom: 11,
+      duration: 1000,
+      essential: true
+    });
+  }, [flyTo]);
+
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-
-      {/* Reset button */}
-      <button className="map-reset-btn" onClick={resetView}>🏠 Pakistan</button>
-
-      {/* Coords */}
-      {coords && (
-        <div className="map-coords">
-          {coords.lat}°N &nbsp; {coords.lon}°E
-        </div>
-      )}
-
-      {/* Legend */}
-      <div className="map-legend">
-        <div className="legend-item"><span style={{ background: '#f59e0b' }} />Capital</div>
-        <div className="legend-item"><span style={{ background: '#38bdf8' }} />Major City</div>
-        <div className="legend-item"><span style={{ background: '#86efac' }} />Minor City</div>
+    <>
+      {/* Map Style Switcher - Positioned at BOTTOM LEFT (won't overlap with city panel) */}
+      <div style={{
+        position: 'absolute',
+        bottom: '20px',
+        left: '20px',
+        zIndex: 10,
+        display: 'flex',
+        flexDirection: 'row',
+        gap: '8px',
+        background: 'rgba(6, 15, 30, 0.95)',
+        backdropFilter: 'blur(12px)',
+        padding: '8px 12px',
+        borderRadius: '40px',
+        border: '1px solid rgba(0, 212, 170, 0.3)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+      }}>
+        {Object.entries(mapStyles).map(([key, style]) => (
+          <button
+            key={key}
+            onClick={() => setMapStyle(key)}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: mapStyle === key ? 'rgba(0, 212, 170, 0.25)' : 'transparent',
+              border: mapStyle === key ? '1.5px solid #00d4aa' : '1px solid rgba(0, 212, 170, 0.3)',
+              color: mapStyle === key ? '#00d4aa' : '#8899aa',
+              cursor: 'pointer',
+              fontSize: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s ease'
+            }}
+            title={style.name}
+          >
+            {style.iconChar}
+          </button>
+        ))}
       </div>
-    </div>
+
+      {/* Current Style Indicator - Bottom Right */}
+      <div style={{
+        position: 'absolute',
+        bottom: '20px',
+        right: '20px',
+        zIndex: 10,
+        background: 'rgba(6, 15, 30, 0.85)',
+        backdropFilter: 'blur(8px)',
+        padding: '6px 14px',
+        borderRadius: '24px',
+        border: '1px solid rgba(0, 212, 170, 0.4)',
+        fontSize: '11px',
+        color: '#00d4aa',
+        fontFamily: 'DM Mono, monospace',
+        pointerEvents: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      }}>
+        <span style={{ fontSize: '14px' }}>{mapStyles[mapStyle].iconChar}</span>
+        <span>{mapStyles[mapStyle].name}</span>
+      </div>
+
+      {/* Map Container */}
+      <div 
+        ref={mapContainer} 
+        style={{ 
+          width: '100%', 
+          height: '100%',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0
+        }} 
+      />
+    </>
   );
-}
+};
+
+export default Map3D;
