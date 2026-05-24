@@ -1291,7 +1291,7 @@ body, html {
 .tour-tips ul { list-style: none; display: flex; flex-direction: column; gap: 0.35rem; }
 .tour-tips li { font-size: 0.68rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem; }
 
-/* ── City Tooltip (Leaflet override) ────────────────── */
+/* ── City Tooltip ────────────────────────────────── */
 .city-tooltip {
   background: rgba(6,12,26,0.95) !important;
   border: 1px solid var(--border-normal) !important;
@@ -1304,6 +1304,35 @@ body, html {
   box-shadow: var(--shadow-glow-teal) !important;
   letter-spacing: 0.04em !important;
   backdrop-filter: blur(12px) !important;
+}
+
+/* ── Map Performance & Rendering ──────────────────── */
+.maplibregl-canvas {
+  will-change: transform;
+}
+
+.maplibregl-map {
+  background: #020812;
+}
+
+/* Minimal controls styling */
+.maplibregl-ctrl-group {
+  background: rgba(6, 15, 30, 0.9) !important;
+  backdrop-filter: blur(4px) !important;
+  border: 1px solid rgba(0, 212, 170, 0.2) !important;
+  border-radius: 6px !important;
+}
+
+.maplibregl-ctrl-group button {
+  width: 26px !important;
+  height: 26px !important;
+  background: transparent !important;
+  color: #00d4aa !important;
+}
+
+/* Smooth style transitions */
+.maplibregl-map * {
+  transition: all 0.2s ease;
 }
 
 /* ── Responsive ─────────────────────────────────── */
