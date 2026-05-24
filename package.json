@@ -47,4 +47,9 @@
       "last 1 safari version"
     ]
   }
+  "homepage": "https://tahaw3511dotcom.github.io/3D-Pakistan-Explorer"
+"scripts": {
+  "predeploy": "npm run build",
+   "deploy": "gh-pages -d build"
+ }
 }
