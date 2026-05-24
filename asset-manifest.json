@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/3D-Pakistan-Explorer/static/css/main.e862cba4.css",
+    "main.js": "/3D-Pakistan-Explorer/static/js/main.17ea7b02.js",
+    "static/js/453.d0537517.chunk.js": "/3D-Pakistan-Explorer/static/js/453.d0537517.chunk.js",
+    "index.html": "/3D-Pakistan-Explorer/index.html",
+    "main.e862cba4.css.map": "/3D-Pakistan-Explorer/static/css/main.e862cba4.css.map",
+    "main.17ea7b02.js.map": "/3D-Pakistan-Explorer/static/js/main.17ea7b02.js.map",
+    "453.d0537517.chunk.js.map": "/3D-Pakistan-Explorer/static/js/453.d0537517.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.e862cba4.css",
+    "static/js/main.17ea7b02.js"
+  ]
+}
